@@ -32,6 +32,11 @@ object QueryToSQL {
     case ForeignKeyLTF(name, tbl, other) => ColumnFK(name, Table(tbl), other)
 
     case JoinQueryLTF(l: Select, r: Select, p) => Select(l.fields ++ r.fields, Some(Join(l.from.get, r.from.get, p)), None)
+
+    case InsertQueryLTF(a, l, v) => Insert(Table(a), l, v)
+
+    case StringValueLTF(v) => StringValue(v)
+    case IntValueLTF(v) => IntValue(v)
   }
 
   def dataDefinition: Algebra[LTQueryF, String] = {
@@ -57,6 +62,10 @@ case class And(l: SQL, r: SQL) extends SQL
 case class Column(name: String, table: Table) extends SQL
 case class ColumnFK(name: String, tbl: Table, target: SQL) extends SQL
 case class Join(l: SQL, r: SQL, on: SQL) extends SQL
+case class IntValue(v: Int) extends SQL
+case class StringValue(v: String) extends SQL
+case class Insert(target: SQL, fields: List[DBAttr[_]], values: List[List[SQL]]) extends SQL
+
 
 trait SQLF[A]
 case class WhereF[A](predicates: List[A]) extends SQLF[A]
@@ -68,6 +77,9 @@ case class AndF[A](l: A, r: A) extends SQLF[A]
 case class ColumnF[A](name: String, table: Table) extends SQLF[A]
 case class ColumnFKF[A](name: String, tbl: Table, target: A) extends SQLF[A]
 case class JoinF[A](l: A, r: A, on: A) extends SQLF[A]
+case class IntValueF[A](v: Int) extends SQLF[A]
+case class StringValueF[A](v: String) extends SQLF[A]
+case class InsertF[A](target: A, fields: List[DBAttr[_]], values: List[List[A]]) extends SQLF[A]
 
 object SQLF {
   def alg: Algebra[SQLF, SQL] = {
@@ -79,6 +91,10 @@ object SQLF {
     case EqualsF(l, r) => Equals(l, r)
     case ColumnFKF(name, tbl, other) => ColumnFK(name, tbl, other)
     case ColumnF(name, tbl) => Column(name, tbl)
+    case IntValueF(v) => IntValue(v)
+    case StringValueF(v) => StringValue(v)
+    case InsertF(t, f, v) => Insert(t, f, v)
+
   }
 
   def coalg: Coalgebra[SQLF, SQL] = {
@@ -90,6 +106,9 @@ object SQLF {
     case Equals(l, r) => EqualsF(l, r)
     case ColumnFK(name, tbl, other) => ColumnFKF(name, tbl, other)
     case Column(name, tbl) => ColumnF(name, tbl)
+    case StringValue(v) => StringValueF(v)
+    case IntValue(v) => IntValueF(v)
+    case Insert(t, f, v) => InsertF(t, f, v)
   }
 
   implicit val traverse: Traverse[SQLF] = new Traverse[SQLF] {
@@ -106,6 +125,9 @@ object SQLF {
         case EqualsF(l, r) => (f(l) |@| f(r))(EqualsF(_, _))
         case ColumnFKF(name, tbl, other) => f(other).map(ColumnFKF(name, tbl, _))
         case ColumnF(name, tbl) => F.point(ColumnF(name, tbl))
+        case StringValueF(v) => F.point(StringValueF(v))
+        case IntValueF(v) => F.point(IntValueF(v))
+        case InsertF(t, _f, v) => (f(t) |@| v.map(_.map(f).sequence).sequence)(InsertF(_, _f, _))
       }
     }
   }
@@ -126,6 +148,9 @@ object SQLF {
     case ColumnFKF(name, Table(tbl), _) => s"$tbl.$name"
     case EqualsF(l, r) => s"$l = $r"
     case JoinF(l, r, p) => s"$l inner join $r on $p"
+    case StringValueF(v) => s"'$v'"
+    case IntValueF(v) => s"$v"
+    case InsertF(t, columns, values) => s"insert into $t (${columns.map(_.name).mkString(", ")}) \nvalues ((${values.map(_.mkString(", ")).mkString("), \n(")}));"
   }
 }
 

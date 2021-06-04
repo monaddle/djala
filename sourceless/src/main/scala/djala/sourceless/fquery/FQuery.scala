@@ -54,23 +54,70 @@ case class TableQuery[A[_[_]]](name: String,
   }
   val table = name
 
-  def ++=(inst:List[A[cats.Id]]) = InsertQuery(inst, this)
+  def ++=(inst:List[A[cats.Id]])(implicit vi: ValidInsert[A[Id]]) = InsertQuery(inst, this)(vi)
 
-  def ++=(inst:Seq[A[cats.Id]]) = InsertQuery(inst.toList, this)
+  def ++=(inst:Seq[A[cats.Id]])(implicit vi: ValidInsert[A[Id]]) = InsertQuery(inst.toList, this)(vi)
 
-  def ++=(inst: A[cats.Id]) = InsertQuery(List(inst), this)
+  def ++=(inst: A[cats.Id])(implicit vi: ValidInsert[A[Id]]) = InsertQuery(List(inst), this)(vi)
 }
 
-case class InsertQuery[A[_[_]]](toInsert: List[A[Id]], table: TableQuery[A]) extends FQuery[A[DBAttr]] {
+case class InsertQuery[A[_[_]]](toInsert: List[A[Id]], table: TableQuery[A])(implicit vis: ValidInsert[A[Id]]) extends FQuery[A[DBAttr]] {
   def shapeToList: List[DBAttr[_]] = table.shapeToList
   val shape = table.shape
+
+  def valuesToLTQuery: List[List[LTQuery]] = toInsert.map(vis.valuesAsLTQuery)
 
   def ++=(inst: List[A[Id]]) = this.copy(toInsert = inst ++ toInsert)
 
   def ++=(inst: A[Id]) = this.copy(toInsert = inst :: toInsert)
+
+
+
 }
 
 
+trait DBAttrToLTValue[A]{
+  def toLTValue(a: A): ValueLT
+}
+
+object DBAttrToLTValue {
+  implicit def apply[A](implicit v: DBAttrToLTValue[A]): DBAttrToLTValue[A] = v
+  implicit def stringToDBAttr: DBAttrToLTValue[String] = new DBAttrToLTValue[String] {
+    override def toLTValue(a: String): ValueLT = StringValueLT(a)
+  }
+  implicit def intToDBAttr: DBAttrToLTValue[Int] = new DBAttrToLTValue[Int] {
+    override def toLTValue(a: Int): ValueLT = IntValueLT(a)
+  }
+}
+trait ValidInsert[A] {
+  def valuesAsLTQuery(a: A): List[ValueLT]
+}
+
+trait ValidInsertHList[A] {
+  def valuesAsLTQuery(a: A): List[ValueLT]
+}
+
+object ValidInsertHList {
+  def apply[A](implicit vi: ValidInsert[A]): ValidInsert[A] = vi
+
+  implicit def validinsertHList[H, T <: HList](implicit dbAttrToLTValue: DBAttrToLTValue[H], vi: ValidInsertHList[T]): ValidInsertHList[H :: T] = new  ValidInsertHList[H :: T] {
+    override def valuesAsLTQuery(a: H :: T): List[ValueLT] = dbAttrToLTValue.toLTValue(a.head) :: vi.valuesAsLTQuery(a.tail)
+  }
+
+  implicit def validinserthnil: ValidInsertHList[HNil] = new ValidInsertHList[HNil] {
+    override def valuesAsLTQuery(a: HNil): List[ValueLT] = Nil
+  }
+}
+
+trait ValidInsertLowPriority {
+  implicit def toHList[A[_[_]], HL <: HList](implicit g: Generic.Aux[A[Id], HL], vi: ValidInsertHList[HL]): ValidInsert[A[Id]] = new ValidInsert[A[Id]] {
+    override def valuesAsLTQuery(a: A[Id]): List[ValueLT] =  vi.valuesAsLTQuery(g.to(a))
+  }
+}
+
+object ValidInsert extends ValidInsertLowPriority {
+  implicit def apply[A[_[_]]](implicit vi: ValidInsert[A[Id]]): ValidInsert[A[Id]] = vi
+}
 
 
 

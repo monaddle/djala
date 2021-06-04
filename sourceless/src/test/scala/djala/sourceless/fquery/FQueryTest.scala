@@ -14,7 +14,8 @@ import Validate._
 import djala.sourceless.ValidShape
 import djala.sourceless.sources.PostgreSQLDB
 import shapeless._
-object MySimpleSuite extends SimpleTestSuite {
+
+object FQueryTest extends SimpleTestSuite {
 
   case class FPersonalInfo[F[_]](name: F[String], age: F[Int])
   case class FEmployee[F[_]](name: F[String], job: F[String])
@@ -108,6 +109,7 @@ object MySimpleSuite extends SimpleTestSuite {
 
   test("create table") {
     println(piTable)
+    println("in create table", piTable.toLTQ)
   }
 
   test("should map") {
@@ -115,16 +117,15 @@ object MySimpleSuite extends SimpleTestSuite {
 
     val deepQuery = mapped.map{x=>x}.map{x=> x}.map{x=>x}.toLTQ
 
-
-
     println("simplified", LTQueryF.ltqfBiRecursive.cata(deepQuery)(simplify))
 
-    println(QueryToSQL.translate(deepQuery))
+    println("translated", QueryToSQL.translate(deepQuery))
 
     println(QueryToSQL.translate(employeeTable.join(piTable)(_.name === _.name).toLTQ))
 
 
-
+    val insert = piTable ++= List(FPersonalInfo[cats.Id]("Danil", 33), FPersonalInfo[cats.Id]("Dana", 32))
+    println("this is an insert", QueryToSQL.translate(insert.toLTQ))
 
 
 
@@ -136,7 +137,7 @@ object MySimpleSuite extends SimpleTestSuite {
     import io.circe.syntax._
     import io.circe._, io.circe.generic.auto._, io.circe.parser._, io.circe.syntax._
 
-    println(FPersonalInfo[List](List("Daniel", "Dana", "Jason"), List(29, 30, 31)).asJson)
+    println(FPersonalInfo[List](List("Daniel", "Dana", "Quincy"), List(29, 30, 14)).asJson)
 
 
 

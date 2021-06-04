@@ -7,8 +7,29 @@ import shapeless._
 
 
 trait Shared extends SimpleTestSuite {
+
+  type Name = String
+
+
+  trait TestTypeclass[A] {
+    def generateInstance: A
+  }
+
+  object TestTypeclass {
+    implicit def apply[A](implicit ttc: TestTypeclass[A]): TestTypeclass[A] = ttc
+
+    implicit def nametc: TestTypeclass[Name] = new TestTypeclass[Name] {
+      override def generateInstance: Name = "Daniel"
+    }
+    implicit def strtc: TestTypeclass[String] = new TestTypeclass[String] {
+      override def generateInstance: String = "str"
+    }
+  }
+
   case class FPersonalInfo[F[_]](name: F[String], age: F[Int])
   case class FEmployeeInfo[F[_]](job: F[String], personalInfo: F[FPersonalInfo[F]])
+
+  val PersonalInfo = FPersonalInfo[Id] _
 }
 object ValidateTest extends Shared {
   test("validates nested") {
@@ -16,6 +37,8 @@ object ValidateTest extends Shared {
         NoValidation(),
         Gt(5) and Lt(120)
       )
+
+
 
 
     val employeeInfoValidations = FEmployeeInfo[Validate](NoValidation(), NestedValidation(piValidations))
@@ -26,7 +49,7 @@ object ValidateTest extends Shared {
       personalInfo = Some(piO)
     )
 
-    val piId = FPersonalInfo[cats.Id]("Daniel", 31)
+    val piId = PersonalInfo("Daniel", 31)
 
     println(piValidations.validateF(piId))
     println(piValidations.validateF(piO))
@@ -63,7 +86,10 @@ object ValidateTest extends Shared {
     )
 
     assert(piValidations.validateOpt(piO).age.isBoth)
+
   }
+
+
 
 }
 
